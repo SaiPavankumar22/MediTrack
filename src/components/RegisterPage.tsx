@@ -20,11 +20,31 @@ export const RegisterPage: React.FC = () => {
     setSuccess('');
     setIsLoading(true);
 
+    // Client-side validation
+    if (formData.name.trim().length < 2) {
+      setError('Name must be at least 2 characters long');
+      setIsLoading(false);
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters long');
+      setIsLoading(false);
+      return;
+    }
+
+    if (!formData.email.endsWith('@meditrack.local')) {
+      setError('Email must end with @meditrack.local');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       await apiService.register(formData);
       setSuccess('Registration successful! You can now sign in.');
       setFormData({ name: '', email: '', password: '', role: 'patient' });
     } catch (err) {
+      console.error('Registration error:', err);
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
       setIsLoading(false);
@@ -100,7 +120,7 @@ export const RegisterPage: React.FC = () => {
                   value={formData.password}
                   onChange={handleChange}
                   className="pl-10 w-full px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 bg-white dark:bg-slate-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
-                  placeholder="Create a secure password"
+                  placeholder="Create a secure password (min 6 characters)"
                   required
                 />
               </div>

@@ -89,6 +89,18 @@ class UserCreate(BaseModel):
         if v not in ['patient', 'doctor']:
             raise ValueError('Role must be either "patient" or "doctor"')
         return v
+    
+    @validator('name')
+    def validate_name(cls, v):
+        if len(v.strip()) < 2:
+            raise ValueError('Name must be at least 2 characters long')
+        return v.strip()
+    
+    @validator('password')
+    def validate_password(cls, v):
+        if len(v) < 6:
+            raise ValueError('Password must be at least 6 characters long')
+        return v
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -166,24 +178,29 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 # API Routes
 @app.post("/register", response_model=dict)
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    # Check if user already exists
-    db_user = db.query(User).filter(User.email == user.email).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Create new user
-    hashed_password = get_password_hash(user.password)
-    db_user = User(
-        name=user.name,
-        email=user.email,
-        hashed_password=hashed_password,
-        role=user.role
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    
-    return {"message": "User registered successfully", "user_id": db_user.id}
+    try:
+        # Check if user already exists
+        db_user = db.query(User).filter(User.email == user.email).first()
+        if db_user:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        # Create new user
+        hashed_password = get_password_hash(user.password)
+        db_user = User(
+            name=user.name,
+            email=user.email,
+            hashed_password=hashed_password,
+            role=user.role
+        )
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        
+        return {"message": "User registered successfully", "user_id": db_user.id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 @app.post("/login", response_model=Token)
 def login_user(user_login: UserLogin, db: Session = Depends(get_db)):

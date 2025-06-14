@@ -34,8 +34,24 @@ class ApiService {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'An error occurred' }));
-      throw new Error(error.detail || 'Request failed');
+      let errorMessage = 'Request failed';
+      try {
+        const errorData = await response.json();
+        if (errorData.detail) {
+          if (Array.isArray(errorData.detail)) {
+            // Handle validation errors
+            errorMessage = errorData.detail.map((err: any) => err.msg).join(', ');
+          } else {
+            errorMessage = errorData.detail;
+          }
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+      } catch (e) {
+        // If we can't parse the error response, use the status text
+        errorMessage = response.statusText || 'Request failed';
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();
