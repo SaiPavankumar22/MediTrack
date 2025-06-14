@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, validator
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -74,15 +74,17 @@ def get_db():
 # Pydantic models
 class UserCreate(BaseModel):
     name: str
-    email: EmailStr
+    email: str
     password: str
     role: str
     
     @validator('email')
     def validate_email(cls, v):
-        if not v.endswith('@meditrack.local'):
+        # Custom email validation for @meditrack.local domain
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@meditrack\.local$'
+        if not re.match(email_pattern, v):
             raise ValueError('Email must be from @meditrack.local domain')
-        return v
+        return v.lower()
     
     @validator('role')
     def validate_role(cls, v):
@@ -103,8 +105,12 @@ class UserCreate(BaseModel):
         return v
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    email: str
     password: str
+    
+    @validator('email')
+    def validate_email(cls, v):
+        return v.lower()
 
 class Token(BaseModel):
     access_token: str
@@ -180,7 +186,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
     try:
         # Check if user already exists
-        db_user = db.query(User).filter(User.email == user.email).first()
+        db_user = db.query(User).filter(User.email == user.email.lower()).first()
         if db_user:
             raise HTTPException(status_code=400, detail="Email already registered")
         
@@ -188,7 +194,7 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
         hashed_password = get_password_hash(user.password)
         db_user = User(
             name=user.name,
-            email=user.email,
+            email=user.email.lower(),
             hashed_password=hashed_password,
             role=user.role
         )
@@ -200,11 +206,12 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 @app.post("/login", response_model=Token)
 def login_user(user_login: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == user_login.email).first()
+    user = db.query(User).filter(User.email == user_login.email.lower()).first()
     if not user or not verify_password(user_login.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
