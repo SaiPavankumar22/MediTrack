@@ -10,24 +10,20 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta, date
 from typing import Optional, List
 import re
-
-# Database setup
 SQLALCHEMY_DATABASE_URL = "sqlite:///./meditrack.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Security
 SECRET_KEY = "your-secret-key-here-change-in-production"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 hours
+ACCESS_TOKEN_EXPIRE_MINUTES = 1440  
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
 app = FastAPI(title="MediTrack Lite API", version="1.0.0")
 
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -36,7 +32,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database Models
 class User(Base):
     __tablename__ = "users"
     
@@ -44,7 +39,7 @@ class User(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    role = Column(String, nullable=False)  # "patient" or "doctor"
+    role = Column(String, nullable=False)  
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Appointment(Base):
@@ -53,12 +48,12 @@ class Appointment(Base):
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, nullable=False)
     patient_name = Column(String, nullable=False)
-    doctor_id = Column(Integer, nullable=True)  # Assigned doctor ID
+    doctor_id = Column(Integer, nullable=True)  
     doctor_name = Column(String, nullable=False)
     appointment_date = Column(String, nullable=False)
     appointment_time = Column(String, nullable=False)
     health_concern = Column(Text, nullable=True)
-    status = Column(String, default="Pending")  # Pending, Confirmed, In Progress, Completed
+    status = Column(String, default="Pending") 
     prescription = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -70,14 +65,12 @@ class Feedback(Base):
     appointment_id = Column(Integer, ForeignKey("appointments.id"), nullable=False)
     patient_id = Column(Integer, nullable=False)
     doctor_id = Column(Integer, nullable=False)
-    rating = Column(Integer, nullable=False)  # 1-5 scale
+    rating = Column(Integer, nullable=False)  
     comment = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# Create tables
 Base.metadata.create_all(bind=engine)
 
-# Dependency to get DB session
 def get_db():
     db = SessionLocal()
     try:
@@ -85,7 +78,6 @@ def get_db():
     finally:
         db.close()
 
-# Pydantic models
 class UserCreate(BaseModel):
     name: str
     email: str
@@ -94,7 +86,6 @@ class UserCreate(BaseModel):
     
     @validator('email')
     def validate_email(cls, v):
-        # Custom email validation for @meditrack.local domain
         email_pattern = r'^[a-zA-Z0-9._%+-]+@meditrack\.local$'
         if not re.match(email_pattern, v):
             raise ValueError('Email must be from @meditrack.local domain')
@@ -199,7 +190,7 @@ class FeedbackResponse(BaseModel):
     comment: Optional[str]
     created_at: datetime
 
-# Utility functions
+
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
@@ -236,16 +227,13 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise credentials_exception
     return user
 
-# API Routes
 @app.post("/register", response_model=dict)
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
     try:
-        # Check if user already exists
         db_user = db.query(User).filter(User.email == user.email.lower()).first()
         if db_user:
             raise HTTPException(status_code=400, detail="Email already registered")
         
-        # Create new user
         hashed_password = get_password_hash(user.password)
         db_user = User(
             name=user.name,
@@ -312,7 +300,7 @@ def create_appointment(
     if current_user.role != "patient":
         raise HTTPException(status_code=403, detail="Only patients can book appointments")
     
-    # Check if patient already has 2 appointments on the same day
+    
     existing_appointments = db.query(Appointment).filter(
         Appointment.patient_id == current_user.id,
         Appointment.appointment_date == appointment.appointment_date
@@ -324,7 +312,6 @@ def create_appointment(
             detail="Cannot book more than 2 appointments per day"
         )
     
-    # Create new appointment
     db_appointment = Appointment(
         patient_id=current_user.id,
         patient_name=current_user.name,
@@ -390,7 +377,6 @@ def accept_appointment(
     if appointment.doctor_id and appointment.doctor_id != current_user.id:
         raise HTTPException(status_code=400, detail="Appointment already accepted by another doctor")
     
-    # Accept the appointment
     appointment.status = "Confirmed"
     appointment.doctor_id = current_user.id
     appointment.updated_at = datetime.utcnow()
@@ -416,7 +402,6 @@ def update_appointment_status(
     if appointment.doctor_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only update your own appointments")
     
-    # Validate status transition
     valid_transitions = {
         "Confirmed": ["In Progress"],
         "In Progress": ["Completed"]
@@ -446,7 +431,6 @@ def create_feedback(
     if current_user.role != "patient":
         raise HTTPException(status_code=403, detail="Only patients can submit feedback")
     
-    # Check if appointment exists and belongs to the patient
     appointment = db.query(Appointment).filter(
         Appointment.id == feedback.appointment_id,
         Appointment.patient_id == current_user.id,
@@ -456,7 +440,6 @@ def create_feedback(
     if not appointment:
         raise HTTPException(status_code=404, detail="Completed appointment not found")
     
-    # Check if feedback already exists
     existing_feedback = db.query(Feedback).filter(
         Feedback.appointment_id == feedback.appointment_id
     ).first()
@@ -464,7 +447,6 @@ def create_feedback(
     if existing_feedback:
         raise HTTPException(status_code=400, detail="Feedback already submitted for this appointment")
     
-    # Create feedback
     db_feedback = Feedback(
         appointment_id=feedback.appointment_id,
         patient_id=current_user.id,
@@ -500,14 +482,12 @@ def get_doctor_stats(
     if current_user.role != "doctor":
         raise HTTPException(status_code=403, detail="Only doctors can view stats")
     
-    # Get appointment counts
     total_appointments = db.query(Appointment).filter(Appointment.doctor_id == current_user.id).count()
     completed_appointments = db.query(Appointment).filter(
         Appointment.doctor_id == current_user.id,
         Appointment.status == "Completed"
     ).count()
     
-    # Get average rating
     feedback_query = db.query(Feedback).filter(Feedback.doctor_id == current_user.id)
     feedback_list = feedback_query.all()
     
